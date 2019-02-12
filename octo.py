@@ -1,11 +1,14 @@
 from functools import lru_cache
 import requests
 
+client = requests.Session()
+
 @lru_cache(maxsize=1024)
 def get(r):
+    global client
     api, vhost = r.split()
     artifact, build, tenant = vhost.split('.', 3)
-    return requests.get("%s/api/build/%s" % (
+    return client.get("%s/api/build/%s" % (
         api, build)).json()["log_url"]
 
 while True:
