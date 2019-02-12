@@ -23,22 +23,23 @@
  * that to look up a build URL which it emits on standard output.
  */
 
-#[macro_use] extern crate custom_error;
+#[macro_use]
+extern crate custom_error;
 extern crate lru;
 extern crate serde_json;
 
 use std::io::{self, BufRead};
 
-use serde_json::Value;
 use lru::LruCache;
 use reqwest::{self, Client, Url, UrlError};
+use serde_json::Value;
 
 custom_error! {PreviewError
     InvalidData{source: UrlError} = "Garbage In",
+    JsonSchema = "JSON schema problem",
     Http{source: reqwest::Error} = "HTTP Fail",
     Io{source: io::Error} = "IO Things",
 }
-
 
 fn main() -> Result<(), PreviewError> {
     let mut cache = LruCache::new(1024);
@@ -48,7 +49,7 @@ fn main() -> Result<(), PreviewError> {
         let parts: Vec<&str> = line.split(' ').collect();
         if parts.len() != 2 {
             println!("Wrong number of args {:?}", parts);
-            continue
+            continue;
         }
         let api_url = parts[0];
         let hostname = parts[1].to_string();
@@ -59,7 +60,7 @@ fn main() -> Result<(), PreviewError> {
         let parts: Vec<&str> = hostname.split('.').collect();
         if parts.len() < 3 {
             println!("Not enough hostname parts");
-            continue
+            continue;
         }
         let _artifact = parts[0];
         let buildid = parts[1];
@@ -68,17 +69,22 @@ fn main() -> Result<(), PreviewError> {
             let base = Url::parse(api_url)?;
             let url = base.join(&format!("/api/build/{}", buildid))?;
             let mut response = client.get(url).send()?;
-            let body: Value = response.json()?;
-            println!("{}", body["log_url"]);
-            cache.put(hostname.clone(), body["log_url"].clone());
-            Ok(())
+            match &response.json::<Value>()?["log_url"] {
+                Value::String(log_url) => {
+                    println!("{}", log_url);
+                    cache.put(hostname.clone(), log_url.clone());
+                    Ok(())
+                }
+                _ => Err(PreviewError::JsonSchema),
+            }
         });
     }
     Ok(())
 }
 
 fn recoverable<F>(mut func: F)
-    where F: FnMut() -> Result<(), PreviewError>
+where
+    F: FnMut() -> Result<(), PreviewError>,
 {
     match func() {
         Err(e) => println!("Error {}", e),
