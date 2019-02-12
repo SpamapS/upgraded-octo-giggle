@@ -23,26 +23,33 @@
  * that to look up a build URL which it emits on standard output.
  */
 
+#[macro_use] extern crate custom_error;
 extern crate lru;
 extern crate serde_json;
-extern crate reqwest;
 
-use std::io::{self, Read};
+use std::io::{self, BufRead};
 
 use serde_json::Value;
 use lru::LruCache;
-use reqwest::{Client,Url};
+use reqwest::{self, Client, Url, UrlError};
+
+custom_error! {PreviewError
+    InvalidData{source: UrlError} = "Garbage In",
+    Http{source: reqwest::Error} = "HTTP Fail",
+    Io{source: io::Error} = "IO Things",
+}
 
 
-fn main() -> io::Result<()> {
+fn main() -> Result<(), PreviewError> {
     let mut cache = LruCache::new(1024);
     let mut buffer = String::new();
     let client = Client::new();
-    loop {
-        io::stdin().read_to_string(&mut buffer)?;
-        let parts: Vec<&str> = buffer.split(' ').collect();
+    for line in io::stdin().lock().lines() {
+        let line = line?;
+        buffer.clear();
+        let parts: Vec<&str> = line.split(' ').collect();
         if parts.len() != 2 {
-            println!("Wrong number of args");
+            println!("Wrong number of args {:?}", parts);
             continue
         }
         let api_url = parts[0];
@@ -58,36 +65,25 @@ fn main() -> io::Result<()> {
         }
         let _artifact = parts[0];
         let buildid = parts[1];
-        let tenant = parts[2];
+        let _tenant = parts[2];
         recoverable(|| {
-            let base = match Url::parse(api_url) {
-                Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
-                Ok(base) => base,
-            };
-            let url = match base.join(&format!("{}/build/{}", tenant, buildid)) {
-                Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
-                Ok(url) => url,
-            };
-            let mut response = match client.get(url).send() {
-                Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
-                Ok(response) => response,
-            };
-            let body: Value = match response.json() {
-                Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
-                Ok(body) => body,
-            };
+            let base = Url::parse(api_url)?;
+            let url = base.join(&format!("/api/build/{}", buildid))?;
+            let mut response = client.get(url).send()?;
+            let body: Value = response.json()?;
             println!("{}", body["log_url"]);
             cache.put(hostname.clone(), body["log_url"].clone());
             Ok(())
         });
     }
+    Ok(())
 }
 
 fn recoverable<F>(mut func: F)
-    where F: FnMut() -> io::Result<()>
+    where F: FnMut() -> Result<(), PreviewError>
 {
     match func() {
-        Err(_) => println!("Error"),
+        Err(e) => println!("Error {}", e),
         Ok(_) => (),
     }
 }
