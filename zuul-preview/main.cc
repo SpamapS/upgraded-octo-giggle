@@ -155,8 +155,7 @@ int main(int, char**)
       // Use the Zuul API to look up the artifact URL.
 
       auto client = clients.get(api_url);
-      auto uri = web::uri_builder("api/tenant");
-      uri.append_path(tenant);
+      auto uri = web::uri_builder("api");
       uri.append_path("build");
       uri.append_path(buildid);
       auto response = client.request(
