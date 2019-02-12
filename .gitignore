@@ -61,3 +61,6 @@ doc/build
 *~
 .*.swp
 .*sw?
+
+/target
+**/*.rs.bk

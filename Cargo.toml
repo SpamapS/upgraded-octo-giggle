@@ -1,0 +1,10 @@
+[package]
+name = "upgraded-octo-giggle"
+version = "0.1.0"
+authors = ["Clint Byrum <clint@fewbar.com>"]
+edition = "2018"
+
+[dependencies]
+reqwest = "*"
+lru = "*"
+serde_json = "*"
