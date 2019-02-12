@@ -37,7 +37,7 @@ use reqwest::{Client,Url};
 fn main() -> io::Result<()> {
     let mut cache = LruCache::new(1024);
     let mut buffer = String::new();
-    let mut client = Client::new();
+    let client = Client::new();
     loop {
         io::stdin().read_to_string(&mut buffer)?;
         let parts: Vec<&str> = buffer.split(' ').collect();
@@ -56,14 +56,38 @@ fn main() -> io::Result<()> {
             println!("Not enough hostname parts");
             continue
         }
-        let artifact = parts[0];
+        let _artifact = parts[0];
         let buildid = parts[1];
         let tenant = parts[2];
-        let base = Url::parse(api_url).unwrap();
-        let url = base.join(format!("{}/build/{}", &tenant, &buildid)).unwrap();
-        let response = client.get(url).send().unwrap();
-        let body: Value = response.json().unwrap();
-        println!("{}", body["log_url"]);
-        cache.put(hostname, body["log_url"]);
+        recoverable(|| {
+            let base = match Url::parse(api_url) {
+                Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
+                Ok(base) => base,
+            };
+            let url = match base.join(&format!("{}/build/{}", tenant, buildid)) {
+                Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
+                Ok(url) => url,
+            };
+            let mut response = match client.get(url).send() {
+                Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
+                Ok(response) => response,
+            };
+            let body: Value = match response.json() {
+                Err(e) => return Err(io::Error::new(io::ErrorKind::InvalidData, e)),
+                Ok(body) => body,
+            };
+            println!("{}", body["log_url"]);
+            cache.put(hostname.clone(), body["log_url"].clone());
+            Ok(())
+        });
+    }
+}
+
+fn recoverable<F>(mut func: F)
+    where F: FnMut() -> io::Result<()>
+{
+    match func() {
+        Err(_) => println!("Error"),
+        Ok(_) => (),
     }
 }
