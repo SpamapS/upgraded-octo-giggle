@@ -42,11 +42,9 @@ custom_error! {PreviewError
 
 fn main() -> Result<(), PreviewError> {
     let mut cache = LruCache::new(1024);
-    let mut buffer = String::new();
     let client = Client::new();
     for line in io::stdin().lock().lines() {
         let line = line?;
-        buffer.clear();
         let parts: Vec<&str> = line.split(' ').collect();
         if parts.len() != 2 {
             println!("Wrong number of args {:?}", parts);
